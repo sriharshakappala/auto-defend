@@ -59,7 +59,47 @@ def validate_jwt_token(token):
     
     return True, "Token format looks valid"
 
-def fetch_devrev_ticket_details(ticket_id, config):
+def extract_ticket_number(ticket_input):
+    """Extract ticket number from various DevRev ticket input formats"""
+    if not ticket_input or not isinstance(ticket_input, str):
+        return None
+    
+    ticket_input = ticket_input.strip()
+    
+    # Format 1: Just the number (e.g., "415131")
+    if ticket_input.isdigit():
+        return ticket_input
+    
+    # Format 2: Display ID format (e.g., "ISS-415131")
+    if ticket_input.startswith("ISS-") and ticket_input[4:].isdigit():
+        return ticket_input[4:]  # Remove "ISS-" prefix
+    
+    # Format 3: Full DON ID format (e.g., "don:core:dvrv-in-1:devo/2sRI6Hepzz:issue/415131")
+    if ":issue/" in ticket_input:
+        try:
+            # Extract the number after the last ":issue/"
+            issue_part = ticket_input.split(":issue/")[-1]
+            if issue_part.isdigit():
+                return issue_part
+        except:
+            pass
+    
+    # Format 4: URL format (if user copies from browser)
+    # e.g., "https://app.devrev.ai/...issue/415131" or similar
+    import re
+    url_match = re.search(r'issue[/:](\d+)', ticket_input)
+    if url_match:
+        return url_match.group(1)
+    
+    # Format 5: Any format with numbers - extract the last sequence of digits
+    numbers = re.findall(r'\d+', ticket_input)
+    if numbers:
+        # Return the last (and typically longest) number sequence
+        return max(numbers, key=len) if len(max(numbers, key=len)) >= 3 else None
+    
+    return None
+
+def fetch_devrev_ticket_details(ticket_input, config):
     """Fetch ticket details from DevRev API"""
     try:
         # Validate JWT token first
@@ -70,10 +110,19 @@ def fetch_devrev_ticket_details(ticket_id, config):
                 'auth_issue': True,
                 'suggestion': 'Please update your JWT token in config.properties'
             }
-        # Construct the API URL - using watchers.get endpoint
-        url = f"{config['devrev_base_url']}/watchers.get"
         
-        # Construct the full ticket ID
+        # Extract ticket number from various input formats
+        ticket_id = extract_ticket_number(ticket_input)
+        if not ticket_id:
+            return {
+                'error': f'Invalid ticket format: {ticket_input}. Please enter ticket number (e.g., 415131) or display ID (e.g., ISS-415131)',
+                'suggestion': 'Enter a valid DevRev ticket number or ID'
+            }
+        
+        # Construct the API URL - using works.get endpoint
+        url = f"{config['devrev_base_url']}/works.get"
+        
+        # Construct the full ticket ID for the API call
         full_ticket_id = f"{config['devrev_org_id']}:issue/{ticket_id}"
         
         # Parameters - only id parameter needed
@@ -85,7 +134,7 @@ def fetch_devrev_ticket_details(ticket_id, config):
         headers = {
             'accept': 'application/json, text/plain, */*',
             'accept-language': 'en-US',
-            'authorization': f"Bearer {config['devrev_user_auth']}",  # Add Bearer prefix
+            'authorization': config['devrev_user_auth'],  # No Bearer prefix needed
             'priority': 'u=1, i',
             'referer': 'https://app.devrev.ai/',
             'sec-ch-ua': '"Google Chrome";v="137", "Chromium";v="137", "Not/A)Brand";v="24"',
@@ -94,12 +143,12 @@ def fetch_devrev_ticket_details(ticket_id, config):
             'sec-fetch-dest': 'empty',
             'sec-fetch-mode': 'cors',
             'sec-fetch-site': 'same-origin',
-            'traceparent': '00-0000000000000000c69a48b5136d1f14-441a29548ee5092a-01',
+            'traceparent': '00-00000000000000009089496d2e5497c5-7f9b948c9170445d-01',
             'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36',
             'x-datadog-origin': 'rum',
-            'x-datadog-parent-id': '4907280187124943146',
+            'x-datadog-parent-id': '9195106395663385693',
             'x-datadog-sampling-priority': '1',
-            'x-datadog-trace-id': '14310830708475371284',
+            'x-datadog-trace-id': '10414936346548541381',
             'x-devrev-client-id': config['devrev_client_id'],
             'x-devrev-client-platform': config['devrev_client_platform'],
             'x-devrev-client-version': config['devrev_client_version'],
@@ -108,6 +157,9 @@ def fetch_devrev_ticket_details(ticket_id, config):
         }
         
         # Debug information
+        print(f"Input ticket: {ticket_input}")
+        print(f"Extracted ticket ID: {ticket_id}")
+        print(f"Full ticket ID: {full_ticket_id}")
         print(f"Making request to: {url}")
         print(f"With params: {params}")
         print(f"Authorization header: {headers.get('authorization', 'Missing')[:50]}...")
@@ -172,63 +224,163 @@ def display_ticket_details(ticket_data):
         with st.expander("🔍 Raw API Response (for debugging)", expanded=False):
             st.json(ticket_data)
         
-        # Try to extract ticket information from various possible structures
+        # Extract ticket information from DevRev API response structure
         ticket_info = None
         
-        # Check different possible response structures
-        if 'data' in ticket_data:
+        # DevRev API returns data under 'work' key
+        if 'work' in ticket_data:
+            ticket_info = ticket_data['work']
+        elif 'data' in ticket_data:
             ticket_info = ticket_data['data']
-        elif 'ticket' in ticket_data:
-            ticket_info = ticket_data['ticket']
-        elif 'issue' in ticket_data:
-            ticket_info = ticket_data['issue']
         else:
             # If it's a direct response
             ticket_info = ticket_data
         
         if ticket_info:
-            # Display basic ticket information
+            # Display basic ticket information in two columns
             col1, col2 = st.columns(2)
             
             with col1:
-                st.write("**Ticket ID:**", ticket_info.get('id', ticket_info.get('don', 'N/A')))
-                st.write("**Status:**", ticket_info.get('status', ticket_info.get('stage', 'N/A')))
-                st.write("**Priority:**", ticket_info.get('priority', ticket_info.get('severity', 'N/A')))
-                st.write("**Type:**", ticket_info.get('type', ticket_info.get('artifact_type', 'N/A')))
+                # Basic ticket info
+                st.write("**Ticket ID:**", ticket_info.get('display_id', ticket_info.get('id', 'N/A')))
+                st.write("**Type:**", ticket_info.get('type', 'N/A').title())
+                
+                # Priority info
+                priority = ticket_info.get('priority', 'N/A')
+                if isinstance(ticket_info.get('priority_v2'), dict):
+                    priority = ticket_info['priority_v2'].get('label', priority)
+                st.write("**Priority:**", priority)
+                
+                # Stage/Status info
+                stage_name = 'N/A'
+                if isinstance(ticket_info.get('stage'), dict):
+                    stage_name = ticket_info['stage'].get('display_name', ticket_info['stage'].get('name', 'N/A'))
+                st.write("**Status:**", stage_name)
+                
+                # State info
+                state = ticket_info.get('state', 'N/A')
+                if isinstance(ticket_info.get('stage', {}).get('state'), dict):
+                    state = ticket_info['stage']['state'].get('display_name', state)
+                st.write("**State:**", state)
             
             with col2:
-                st.write("**Created:**", ticket_info.get('created_date', ticket_info.get('created_at', 'N/A')))
-                st.write("**Updated:**", ticket_info.get('updated_date', ticket_info.get('modified_at', 'N/A')))
-                st.write("**Reporter:**", ticket_info.get('reporter', ticket_info.get('creator', 'N/A')))
-                st.write("**Assignee:**", ticket_info.get('assignee', ticket_info.get('owner', 'N/A')))
+                st.write("**Created:**", ticket_info.get('created_date', 'N/A'))
+                st.write("**Modified:**", ticket_info.get('modified_date', 'N/A'))
+                
+                # Created by
+                created_by = 'N/A'
+                if isinstance(ticket_info.get('created_by'), dict):
+                    created_by = ticket_info['created_by'].get('display_name', ticket_info['created_by'].get('full_name', 'N/A'))
+                st.write("**Created By:**", created_by)
+                
+                # Modified by
+                modified_by = 'N/A'
+                if isinstance(ticket_info.get('modified_by'), dict):
+                    modified_by = ticket_info['modified_by'].get('display_name', ticket_info['modified_by'].get('full_name', 'N/A'))
+                st.write("**Modified By:**", modified_by)
             
-            # Title and description
-            title = ticket_info.get('title', ticket_info.get('summary', ''))
+            # Title
+            title = ticket_info.get('title', '')
             if title:
-                st.write("**Title:**", title)
+                st.markdown("---")
+                st.write("**📋 Title:**")
+                st.info(title)
             
-            description = ticket_info.get('description', ticket_info.get('body', ''))
-            if description:
-                st.write("**Description:**")
-                st.text_area("Description", value=description, height=150, disabled=True, key="ticket_desc_display")
+            # Owned By section
+            owned_by = ticket_info.get('owned_by', [])
+            if owned_by and isinstance(owned_by, list):
+                st.markdown("---")
+                st.write("**👤 Owned By:**")
+                for i, owner in enumerate(owned_by):
+                    if isinstance(owner, dict):
+                        name = owner.get('display_name', owner.get('full_name', 'Unknown'))
+                        email = owner.get('email', 'No email')
+                        handle = owner.get('display_handle', '')
+                        
+                        # Create a nice display for each owner
+                        col_owner1, col_owner2 = st.columns([1, 3])
+                        with col_owner1:
+                            if owner.get('thumbnail'):
+                                st.image(owner['thumbnail'], width=40)
+                            else:
+                                st.write("👤")
+                        with col_owner2:
+                            st.write(f"**{name}**")
+                            st.write(f"📧 {email}")
+                            if handle:
+                                st.write(f"🏷️ @{handle}")
+                        
+                        if i < len(owned_by) - 1:  # Add separator except for last item
+                            st.write("")
             
-            # Additional fields that might contain useful information
-            if 'labels' in ticket_info:
-                st.write("**Labels:**", ", ".join(ticket_info['labels']))
+            # Reported By section
+            reported_by = ticket_info.get('reported_by', [])
+            if reported_by and isinstance(reported_by, list):
+                st.markdown("---")
+                st.write("**📝 Reported By:**")
+                for i, reporter in enumerate(reported_by):
+                    if isinstance(reporter, dict):
+                        name = reporter.get('display_name', reporter.get('full_name', 'Unknown'))
+                        email = reporter.get('email', 'No email')
+                        handle = reporter.get('display_handle', '')
+                        
+                        # Create a nice display for each reporter
+                        col_reporter1, col_reporter2 = st.columns([1, 3])
+                        with col_reporter1:
+                            if reporter.get('thumbnail'):
+                                st.image(reporter['thumbnail'], width=40)
+                            else:
+                                st.write("📝")
+                        with col_reporter2:
+                            st.write(f"**{name}**")
+                            st.write(f"📧 {email}")
+                            if handle:
+                                st.write(f"🏷️ @{handle}")
+                        
+                        if i < len(reported_by) - 1:  # Add separator except for last item
+                            st.write("")
             
-            if 'tags' in ticket_info:
-                st.write("**Tags:**", ", ".join(ticket_info['tags']))
+            # Body/Description section - this is the main vulnerability details
+            body = ticket_info.get('body', '')
+            if body:
+                st.markdown("---")
+                st.write("**📄 Vulnerability Details:**")
+                # Display the body in a formatted text area
+                st.text_area("Vulnerability Description", value=body, height=300, disabled=True, key="ticket_body_display")
             
-            # Comments or conversation
-            comments = ticket_info.get('comments', ticket_info.get('conversation', []))
-            if comments and isinstance(comments, list) and len(comments) > 0:
-                st.write("**Recent Comments:**")
-                for i, comment in enumerate(comments[:3]):  # Show last 3 comments
-                    if isinstance(comment, dict):
-                        author = comment.get('author', comment.get('creator', comment.get('user', 'Unknown')))
-                        text = comment.get('text', comment.get('body', comment.get('content', '')))
-                        if text:
-                            st.info(f"**{author}**: {text}")
+            # Tags section
+            tags = ticket_info.get('tags', [])
+            if tags and isinstance(tags, list):
+                st.markdown("---")
+                st.write("**🏷️ Tags:**")
+                tag_names = []
+                for tag in tags:
+                    if isinstance(tag, dict) and 'tag' in tag:
+                        tag_name = tag['tag'].get('name', 'Unknown')
+                        tag_names.append(tag_name)
+                if tag_names:
+                    st.write(", ".join(tag_names))
+            
+            # Additional custom fields for security context
+            custom_fields = ticket_info.get('custom_fields', {})
+            if custom_fields:
+                with st.expander("🔧 Additional Security Details", expanded=False):
+                    # Extract relevant security fields
+                    repo = custom_fields.get('ctype__customfield_10081', custom_fields.get('ctype__customfield_10084'))
+                    if repo:
+                        st.write(f"**Repository:** {repo}")
+                    
+                    severity = custom_fields.get('ctype__customfield_10092', custom_fields.get('ctype__customfield_10093'))
+                    if severity:
+                        st.write(f"**Severity:** {severity}")
+                    
+                    issue_type = custom_fields.get('ctype__customfield_10079')
+                    if issue_type:
+                        st.write(f"**Issue Type:** {issue_type}")
+                    
+                    semgrep_url = custom_fields.get('ctype__customfield_12521')
+                    if semgrep_url:
+                        st.write(f"**Semgrep URL:** [{semgrep_url}]({semgrep_url})")
             
             return ticket_info
         else:
@@ -403,8 +555,8 @@ devrev_session_id=your_session_id_here
         with col1:
             ticket_number = st.text_input(
                 "DevRev Ticket Number",
-                help="Enter the ticket ID (e.g., 123456)",
-                placeholder="123456",
+                help="Enter ticket in any format: 415131, ISS-415131, or full DON ID",
+                placeholder="415131 or ISS-415131",
                 key="devrev_ticket_number"
             )
             
@@ -442,6 +594,14 @@ devrev_session_id=your_session_id_here
                     st.success(f"✅ {token_message}")
                 else:
                     st.error(f"❌ {token_message}")
+        
+        # Show ticket ID extraction preview
+        if ticket_number:
+            extracted_id = extract_ticket_number(ticket_number)
+            if extracted_id:
+                st.info(f"🎯 Extracted Ticket ID: **{extracted_id}** from input: `{ticket_number}`")
+            else:
+                st.warning(f"⚠️ Could not extract valid ticket ID from: `{ticket_number}`")
         
         # Fetch ticket details
         if fetch_btn and ticket_number:
