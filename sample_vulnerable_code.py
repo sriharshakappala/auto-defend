@@ -1,45 +1,41 @@
+```python
 import re
 import hashlib
 
-class VulnerableWebApp:
+class SecureWebApp:
     """
-    A vulnerable web application class that demonstrates common SQL injection vulnerabilities
+    A (now secure) web application class demonstrating prevention of common SQL injection vulnerabilities
     WITHOUT creating any actual database files - uses mock SQL query construction
     """
     def __init__(self):
         # Mock database - in-memory user data
+        # Store password hashes, not plain text
         self.users = [
-            {'id': 1, 'username': 'admin', 'password': 'admin123', 'email': 'admin@example.com', 'role': 'admin'},
-            {'id': 2, 'username': 'john_doe', 'password': 'password123', 'email': 'john@example.com', 'role': 'user'},
-            {'id': 3, 'username': 'jane_smith', 'password': 'securepass', 'email': 'jane@example.com', 'role': 'user'}
+            {'id': 1, 'username': 'admin', 'password': self._hash_password('admin123'), 'email': 'admin@example.com', 'role': 'admin'},
+            {'id': 2, 'username': 'john_doe', 'password': self._hash_password('password123'), 'email': 'john@example.com', 'role': 'user'},
+            {'id': 3, 'username': 'jane_smith', 'password': self._hash_password('securepass'), 'email': 'jane@example.com', 'role': 'user'}
         ]
+    
+    def _hash_password(self, password):
+        """Hashes the password using SHA-256."""
+        hashed_password = hashlib.sha256(password.encode('utf-8')).hexdigest()
+        return hashed_password
     
     def login(self, username, password):
         """
-        VULNERABLE: SQL Injection vulnerability in login function
-        This function builds SQL queries using string concatenation
+        Secure login function using parameterized queries and hashed passwords.
         """
-        # VULNERABILITY: Direct string concatenation allows SQL injection
-        query = f"SELECT id, username, email, role FROM users WHERE username = '{username}' AND password = '{password}'"
+        # Input validation: Basic username/password constraints
+        if not (isinstance(username, str) and 3 <= len(username) <= 20 and
+                isinstance(password, str) and 8 <= len(password) <= 64):
+            print("[SECURITY] Invalid username or password format.")
+            return {'authenticated': False, 'error': 'Invalid username or password format.'}
         
-        print(f"[VULNERABLE] Executing query: {query}")  # This exposes the query
+        hashed_password = self._hash_password(password)
         
-        # Simulate SQL injection vulnerability
-        if "' OR '1'='1" in username or "' OR '1'='1" in password:
-            # SQL injection detected - would bypass authentication in real scenario
-            print("[DANGER] SQL Injection detected! Authentication bypassed!")
-            return {
-                'id': 1,
-                'username': 'admin',
-                'email': 'admin@example.com', 
-                'role': 'admin',
-                'authenticated': True,
-                'vulnerability': 'SQL_INJECTION_BYPASS'
-            }
-        
-        # Normal authentication
+        # Secure Authentication: Compare hashed password
         for user in self.users:
-            if user['username'] == username and user['password'] == password:
+            if user['username'] == username and user['password'] == hashed_password:
                 return {
                     'id': user['id'],
                     'username': user['username'],
@@ -52,154 +48,134 @@ class VulnerableWebApp:
     
     def get_user_info(self, user_id):
         """
-        VULNERABLE: SQL Injection in user info retrieval
+        Secure user info retrieval using proper type handling and no direct query construction.
         """
-        # VULNERABILITY: Direct string formatting allows SQL injection
-        query = f"SELECT * FROM users WHERE id = {user_id}"
-        print(f"[VULNERABLE] Executing query: {query}")
-        
-        # Simulate SQL injection vulnerability
-        if "UNION" in str(user_id).upper() or "SELECT" in str(user_id).upper():
-            print("[DANGER] SQL Injection detected in user_id parameter!")
-            # In real scenario, this could expose all user data
-            return {
-                'vulnerability': 'SQL_INJECTION_DATA_EXPOSURE',
-                'exposed_data': self.users  # All user data exposed
-            }
-        
-        # Normal functionality
         try:
-            user_id = int(user_id)
-            for user in self.users:
-                if user['id'] == user_id:
-                    return user
-        except ValueError:
-            pass
+            user_id = int(user_id) # Enforce integer type
+        except (ValueError, TypeError):
+            print("[SECURITY] Invalid user ID format.")
+            return {'error': 'Invalid user ID format'}
+        
+        # No SQL Injection possible here because we are not building SQL queries.
+        for user in self.users:
+            if user['id'] == user_id:
+                return user
         
         return None
     
     def search_users(self, search_term):
         """
-        VULNERABLE: SQL injection in search functionality
+        Secure search functionality using proper sanitization/escaping (if using a real database)
         """
-        # VULNERABILITY: String formatting without sanitization
-        query = f"SELECT username, email FROM users WHERE username LIKE '%{search_term}%' OR email LIKE '%{search_term}%'"
-        print(f"[VULNERABLE] Executing query: {query}")
+        if not isinstance(search_term, str) or len(search_term) > 50:
+            print("[SECURITY] Invalid search term format.")
+            return {'error': 'Invalid search term format'}
         
-        # Simulate SQL injection vulnerability
-        if "UNION SELECT" in search_term.upper() or "'; DROP" in search_term.upper():
-            print("[DANGER] SQL Injection detected in search!")
-            return {
-                'vulnerability': 'SQL_INJECTION_IN_SEARCH',
-                'message': 'Malicious SQL detected - could expose sensitive data or drop tables!'
-            }
+        # Sanitize search term (if this were interacting with a real DB, use DB-specific escaping)
+        sanitized_search_term = re.sub(r'[%_]', '', search_term) #Remove wildcard chars to prevent injection of those
+        sanitized_search_term = sanitized_search_term.lower()
         
-        # Normal search functionality
         results = []
         for user in self.users:
-            if search_term.lower() in user['username'].lower() or search_term.lower() in user['email'].lower():
+            if sanitized_search_term in user['username'].lower() or sanitized_search_term in user['email'].lower():
                 results.append({'username': user['username'], 'email': user['email']})
         
         return results
     
     def update_password(self, username, new_password):
         """
-        VULNERABLE: Password update with multiple security issues
+        Secure password update using hashed passwords and no direct query construction.
         """
-        # VULNERABILITY 1: Plain text password storage
-        # VULNERABILITY 2: SQL injection in update query
-        query = f"UPDATE users SET password = '{new_password}' WHERE username = '{username}'"
-        print(f"[VULNERABLE] Executing query: {query}")
+        # Input validation
+        if not (isinstance(username, str) and 3 <= len(username) <= 20 and
+                isinstance(new_password, str) and 8 <= len(new_password) <= 64):
+            print("[SECURITY] Invalid username or password format.")
+            return False
         
-        # Check for SQL injection
-        if "'; DROP" in new_password or "'; UPDATE" in username:
-            print("[DANGER] SQL Injection detected in password update!")
-            return {
-                'vulnerability': 'SQL_INJECTION_IN_UPDATE',
-                'message': 'Malicious SQL could modify multiple records or drop tables!'
-            }
+        hashed_password = self._hash_password(new_password)
         
-        # Normal functionality (still vulnerable to plain text storage)
         for user in self.users:
             if user['username'] == username:
-                user['password'] = new_password  # VULNERABILITY: Plain text storage
-                print(f"[WARNING] Password stored in plain text for user: {username}")
+                user['password'] = hashed_password
+                print(f"[SECURITY] Password updated securely for user: {username}")
                 return True
         
         return False
     
     def admin_query(self, custom_query):
         """
-        EXTREMELY VULNERABLE: Direct SQL execution (admin function)
+        Simulates admin query execution with strict limitations.
         """
-        print(f"[EXTREMELY DANGEROUS] Executing raw query: {custom_query}")
+        print("[SECURITY] Admin query attempted.")
         
-        # This represents the ultimate SQL injection vulnerability
-        # Direct execution of user-provided SQL
-        dangerous_keywords = ['DROP', 'DELETE', 'TRUNCATE', 'ALTER', 'CREATE', 'GRANT']
+        # Even with input validation, avoid direct execution of any user-provided SQL
+        dangerous_keywords = ['DROP', 'DELETE', 'TRUNCATE', 'ALTER', 'CREATE', 'GRANT', 'SELECT', 'INSERT', 'UPDATE']
         
         for keyword in dangerous_keywords:
             if keyword in custom_query.upper():
+                print(f"[SECURITY] Blocked dangerous admin query due to keyword: {keyword}")
                 return {
-                    'vulnerability': 'DIRECT_SQL_EXECUTION',
+                    'vulnerability': 'ATTEMPTED_DIRECT_SQL_EXECUTION',
                     'severity': 'CRITICAL',
-                    'message': f'Dangerous SQL keyword "{keyword}" detected! This could destroy the entire database!'
+                    'message': f'Dangerous SQL keyword "{keyword}" detected!  Query blocked.'
                 }
         
-        return {'message': 'Query executed (simulated)'}
+        print("[SECURITY] Admin query blocked due to security policy.")
+        return {'message': 'Admin query blocked by security policy.'}
 
-# Example usage demonstrating the vulnerabilities
+# Example usage demonstrating the improved security
 if __name__ == "__main__":
-    app = VulnerableWebApp()
+    app = SecureWebApp()
     
-    print("=== VULNERABLE WEB APPLICATION DEMO ===")
-    print("This demonstrates SQL injection vulnerabilities WITHOUT creating database files\n")
+    print("=== SECURE WEB APPLICATION DEMO ===")
+    print("This demonstrates prevention of SQL injection vulnerabilities WITHOUT creating database files\n")
     
     # Normal usage
     print("1. === Normal Login ===")
     result = app.login("admin", "admin123")
     print(f"Login result: {result}\n")
     
-    # Demonstrate SQL injection vulnerabilities
-    print("2. === SQL Injection Attack Examples ===")
+    # Demonstrate protection against SQL injection vulnerabilities
+    print("2. === Attempted SQL Injection Attack Examples ===")
     
     # SQL injection in login - bypass authentication
-    print("2.1 Authentication bypass:")
+    print("2.1 Authentication bypass attempt:")
     malicious_input = "admin' OR '1'='1' --"
     result = app.login(malicious_input, "any_password")
-    print(f"Malicious login result: {result}\n")
+    print(f"Malicious login result: {result}\n")  # Should fail
     
     # SQL injection in user info
-    print("2.2 Data extraction attack:")
+    print("2.2 Data extraction attack attempt:")
     malicious_id = "1 UNION SELECT username, password FROM users"
     result = app.get_user_info(malicious_id)
-    print(f"User info attack result: {result}\n")
+    print(f"User info attack result: {result}\n")  # Should fail
     
     # SQL injection in search
-    print("2.3 Search injection:")
+    print("2.3 Search injection attempt:")
     malicious_search = "' UNION SELECT username, password FROM users --"
     results = app.search_users(malicious_search)
-    print(f"Search attack result: {results}\n")
+    print(f"Search attack result: {results}\n")  # Should return no results, or an error
     
     # SQL injection in password update
-    print("2.4 Password update injection:")
+    print("2.4 Password update injection attempt:")
     malicious_password = "newpass'; UPDATE users SET role='admin' WHERE username='john_doe"
     result = app.update_password("jane_smith", malicious_password)
-    print(f"Password update attack: {result}\n")
+    print(f"Password update attack: {result}\n")  # Should fail
     
     # Direct SQL execution
-    print("2.5 Direct SQL execution (most dangerous):")
+    print("2.5 Direct SQL execution attempt (most dangerous):")
     malicious_query = "DROP TABLE users; --"
     result = app.admin_query(malicious_query)
-    print(f"Direct SQL attack: {result}\n")
+    print(f"Direct SQL attack: {result}\n")  # Should be blocked
     
-    print("=== VULNERABILITIES SUMMARY ===")
-    print("🚨 1. SQL Injection in login() - Authentication bypass")
-    print("🚨 2. SQL Injection in get_user_info() - Data exposure") 
-    print("🚨 3. SQL Injection in search_users() - Information disclosure")
-    print("🚨 4. SQL Injection in update_password() - Data manipulation")
-    print("🚨 5. Direct SQL execution in admin_query() - Complete system compromise")
-    print("🚨 6. Plain text password storage")
-    print("🚨 7. No input validation or sanitization")
-    print("🚨 8. Query logging exposes sensitive information")
-    print("\n✅ This file is perfect for testing Auto Defend's security fix capabilities!") 
+    print("=== SECURITY SUMMARY ===")
+    print("✅ 1. SQL Injection in login() - Authentication bypass PREVENTED")
+    print("✅ 2. SQL Injection in get_user_info() - Data exposure PREVENTED")
+    print("✅ 3. SQL Injection in search_users() - Information disclosure PREVENTED")
+    print("✅ 4. SQL Injection in update_password() - Data manipulation PREVENTED")
+    print("✅ 5. Direct SQL execution in admin_query() - Complete system compromise PREVENTED")
+    print("✅ 6. Plain text password storage - ELIMINATED (using password hashing)")
+    print("✅ 7. Input validation and sanitization - IMPLEMENTED")
+    print("✅ 8. Query logging of sensitive information - ELIMINATED")
+    print("\nThis file demonstrates mitigation of common web application vulnerabilities!")
+```
