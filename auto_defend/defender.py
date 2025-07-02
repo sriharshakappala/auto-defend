@@ -2,7 +2,7 @@ import os
 import tempfile
 import git
 from github import Github
-import openai
+import google.generativeai as genai
 import glob
 import shutil
 from datetime import datetime
@@ -10,16 +10,17 @@ import re
 
 class AutoDefend:
     """
-    AutoDefend clones a GitHub repo, uses OpenAI GPT-4 to fix vulnerabilities in a specified file, and raises a PR.
+    AutoDefend clones a GitHub repo, uses Google Gemini to fix vulnerabilities in a specified file, and raises a PR.
     """
-    def __init__(self, repo_url, github_token, openai_api_key=None):
+    def __init__(self, repo_url, github_token, gemini_api_key=None):
         self.repo_url = repo_url
         self.github_token = github_token
-        self.openai_api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
+        self.gemini_api_key = gemini_api_key or os.getenv("GEMINI_API_KEY")
         self.local_dir = tempfile.mkdtemp()
         self.repo = None
         self.github = Github(self.github_token)
-        openai.api_key = self.openai_api_key
+        genai.configure(api_key=self.gemini_api_key)
+        self.model = genai.GenerativeModel('gemini-pro')
         self.branch_name = f"auto-defend-fix-{datetime.now().strftime('%Y%m%d%H%M%S')}"
 
     def clone_repo(self):
@@ -68,18 +69,13 @@ File content:
 """
         )
         try:
-            response = openai.chat.completions.create(
-                model="gpt-4",
-                messages=[{"role": "user", "content": prompt}],
-                max_tokens=4096,
-                temperature=0.2,
-            )
-            fixed_code = response.choices[0].message.content.strip()
+            response = self.model.generate_content(prompt)
+            fixed_code = response.text.strip()
             if fixed_code and fixed_code != code:
                 with open(file_path, "w", encoding="utf-8") as f:
                     f.write(fixed_code)
         except Exception as e:
-            print(f"OpenAI error for {file_path}: {e}")
+            print(f"Gemini error for {file_path}: {e}")
             raise
 
     def commit_and_push(self, commit_message):
