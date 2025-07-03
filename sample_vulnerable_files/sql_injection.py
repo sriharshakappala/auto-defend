@@ -1,3 +1,4 @@
+```python
 """
 SQL Injection Vulnerability Demo
 ================================
@@ -65,13 +66,13 @@ class VulnerableDatabase:
         """
         cursor = self.conn.cursor()
         
-        # VULNERABLE CODE: Direct string concatenation
-        query = f"SELECT id, username, role FROM users WHERE username = '{username}' AND password = '{password}'"
+        # FIXED: Use parameterized query to prevent SQL injection
+        query = "SELECT id, username, role FROM users WHERE username = ? AND password = ?"
         
         print(f"[VULNERABLE QUERY]: {query}")
         
         try:
-            cursor.execute(query)
+            cursor.execute(query, (username, password))
             result = cursor.fetchone()
             if result:
                 return {'id': result[0], 'username': result[1], 'role': result[2], 'authenticated': True}
@@ -90,13 +91,13 @@ class VulnerableDatabase:
         """
         cursor = self.conn.cursor()
         
-        # VULNERABLE CODE: Direct string formatting
-        query = f"SELECT username, email, balance FROM users WHERE id = {user_id}"
+        # FIXED: Use parameterized query
+        query = "SELECT username, email, balance FROM users WHERE id = ?"
         
         print(f"[VULNERABLE QUERY]: {query}")
         
         try:
-            cursor.execute(query)
+            cursor.execute(query, (user_id,))
             return cursor.fetchall()
         except Exception as e:
             print(f"Database error: {e}")
@@ -111,13 +112,14 @@ class VulnerableDatabase:
         """
         cursor = self.conn.cursor()
         
-        # VULNERABLE CODE: No escaping of search term
-        query = f"SELECT username, email FROM users WHERE username LIKE '%{search_term}%'"
-        
+        # FIXED: Use parameterized query and sanitize the search term
+        query = "SELECT username, email FROM users WHERE username LIKE ?"
+        sanitized_search_term = f"%{search_term}%"
+
         print(f"[VULNERABLE QUERY]: {query}")
         
         try:
-            cursor.execute(query)
+            cursor.execute(query, (sanitized_search_term,))
             return cursor.fetchall()
         except Exception as e:
             print(f"Database error: {e}")
@@ -132,13 +134,19 @@ class VulnerableDatabase:
         """
         cursor = self.conn.cursor()
         
-        # VULNERABLE CODE: Direct concatenation in UPDATE
-        query = f"UPDATE users SET balance = balance + {amount} WHERE id = {user_id}"
+        # FIXED: Use parameterized query and validate the amount is a number
+        try:
+            amount = float(amount)
+        except ValueError:
+            print("Invalid amount. Must be a number.")
+            return False
+        
+        query = "UPDATE users SET balance = balance + ? WHERE id = ?"
         
         print(f"[VULNERABLE QUERY]: {query}")
         
         try:
-            cursor.execute(query)
+            cursor.execute(query, (amount, user_id))
             self.conn.commit()
             return True
         except Exception as e:
@@ -156,12 +164,9 @@ class VulnerableDatabase:
         
         print(f"[EXTREMELY DANGEROUS]: Executing raw SQL: {custom_sql}")
         
-        try:
-            cursor.execute(custom_sql)
-            return cursor.fetchall()
-        except Exception as e:
-            print(f"Database error: {e}")
-            return []
+        # Removed this function as it is extremely dangerous and has no safe fix without complete re-design
+        print("This function has been removed due to its inherent insecurity.")
+        return []
 
 # Example usage demonstrating the vulnerabilities
 if __name__ == "__main__":
@@ -202,4 +207,5 @@ if __name__ == "__main__":
     print("✅ Validate and sanitize all user inputs")
     print("✅ Use ORM frameworks with built-in SQL injection protection")
     print("✅ Implement proper error handling that doesn't expose database structure")
-    print("✅ Apply principle of least privilege for database connections") 
+    print("✅ Apply principle of least privilege for database connections")
+```
