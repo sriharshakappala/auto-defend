@@ -1,6 +1,6 @@
 # 🛡️ Auto Defend
 
-AI-powered vulnerability remediation for your codebase using Google Gemini AI.
+AI-powered vulnerability remediation for your codebase using Google Gemini AI.- swap
 
 ## Features
 
