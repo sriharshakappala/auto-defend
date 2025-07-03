@@ -1,3 +1,4 @@
+```python
 """
 SQL Injection Vulnerability Demo
 ================================
@@ -66,12 +67,15 @@ class VulnerableDatabase:
         cursor = self.conn.cursor()
         
         # VULNERABLE CODE: Direct string concatenation
-        query = f"SELECT id, username, role FROM users WHERE username = '{username}' AND password = '{password}'"
+        # query = f"SELECT id, username, role FROM users WHERE username = '{username}' AND password = '{password}'"
         
-        print(f"[VULNERABLE QUERY]: {query}")
+        # FIX: Using parameterized query to prevent SQL injection
+        query = "SELECT id, username, role FROM users WHERE username = ? AND password = ?"
+        
+        print(f"[VULNERABLE QUERY]: SELECT id, username, role FROM users WHERE username = '{username}' AND password = '{password}'")
         
         try:
-            cursor.execute(query)
+            cursor.execute(query, (username, password))
             result = cursor.fetchone()
             if result:
                 return {'id': result[0], 'username': result[1], 'role': result[2], 'authenticated': True}
@@ -91,12 +95,15 @@ class VulnerableDatabase:
         cursor = self.conn.cursor()
         
         # VULNERABLE CODE: Direct string formatting
-        query = f"SELECT username, email, balance FROM users WHERE id = {user_id}"
+        # query = f"SELECT username, email, balance FROM users WHERE id = {user_id}"
         
-        print(f"[VULNERABLE QUERY]: {query}")
+        # FIX: Using parameterized query
+        query = "SELECT username, email, balance FROM users WHERE id = ?"
+        
+        print(f"[VULNERABLE QUERY]: SELECT username, email, balance FROM users WHERE id = {user_id}")
         
         try:
-            cursor.execute(query)
+            cursor.execute(query, (user_id,))
             return cursor.fetchall()
         except Exception as e:
             print(f"Database error: {e}")
@@ -112,12 +119,16 @@ class VulnerableDatabase:
         cursor = self.conn.cursor()
         
         # VULNERABLE CODE: No escaping of search term
-        query = f"SELECT username, email FROM users WHERE username LIKE '%{search_term}%'"
+        # query = f"SELECT username, email FROM users WHERE username LIKE '%{search_term}%'"
         
-        print(f"[VULNERABLE QUERY]: {query}")
+        # FIX: Using parameterized query and LIKE operator with wildcard
+        query = "SELECT username, email FROM users WHERE username LIKE ?"
+        search_term = f"%{search_term}%" # Add wildcards for LIKE operator
+        
+        print(f"[VULNERABLE QUERY]: SELECT username, email FROM users WHERE username LIKE '%{search_term}%'")
         
         try:
-            cursor.execute(query)
+            cursor.execute(query, (search_term,))
             return cursor.fetchall()
         except Exception as e:
             print(f"Database error: {e}")
@@ -133,12 +144,21 @@ class VulnerableDatabase:
         cursor = self.conn.cursor()
         
         # VULNERABLE CODE: Direct concatenation in UPDATE
-        query = f"UPDATE users SET balance = balance + {amount} WHERE id = {user_id}"
+        # query = f"UPDATE users SET balance = balance + {amount} WHERE id = {user_id}"
         
-        print(f"[VULNERABLE QUERY]: {query}")
+        # FIX: Using parameterized query.  Validate amount is numeric before using
+        try:
+            amount = float(amount)  # Ensure amount is a valid number
+        except ValueError:
+            print("Invalid amount provided.")
+            return False
+            
+        query = "UPDATE users SET balance = balance + ? WHERE id = ?"
+        
+        print(f"[VULNERABLE QUERY]: UPDATE users SET balance = balance + {amount} WHERE id = {user_id}")
         
         try:
-            cursor.execute(query)
+            cursor.execute(query, (amount, user_id))
             self.conn.commit()
             return True
         except Exception as e:
@@ -202,4 +222,5 @@ if __name__ == "__main__":
     print("✅ Validate and sanitize all user inputs")
     print("✅ Use ORM frameworks with built-in SQL injection protection")
     print("✅ Implement proper error handling that doesn't expose database structure")
-    print("✅ Apply principle of least privilege for database connections") 
+    print("✅ Apply principle of least privilege for database connections")
+```
