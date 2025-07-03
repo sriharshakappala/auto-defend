@@ -1,3 +1,4 @@
+```python
 """
 SQL Injection Vulnerability Demo
 ================================
@@ -56,22 +57,19 @@ class VulnerableDatabase:
         cursor.executemany('INSERT INTO users VALUES (?,?,?,?,?,?)', users)
         self.conn.commit()
     
-    def vulnerable_login(self, username, password):
+    def safe_login(self, username, password):
         """
-        🚨 VULNERABILITY: SQL Injection in Login Function
-        
-        ISSUE: Direct string concatenation allows SQL injection attacks
-        ATTACK: Input like "admin' OR '1'='1' --" bypasses authentication
+        ✅ FIXED: SQL Injection in Login Function using parameterized queries
         """
         cursor = self.conn.cursor()
         
-        # VULNERABLE CODE: Direct string concatenation
-        query = f"SELECT id, username, role FROM users WHERE username = '{username}' AND password = '{password}'"
+        # FIXED CODE: Using parameterized query to prevent SQL injection
+        query = "SELECT id, username, role FROM users WHERE username = ? AND password = ?"
         
-        print(f"[VULNERABLE QUERY]: {query}")
+        print(f"[SAFE QUERY]: {query} with parameters: {(username, password)}")
         
         try:
-            cursor.execute(query)
+            cursor.execute(query, (username, password))
             result = cursor.fetchone()
             if result:
                 return {'id': result[0], 'username': result[1], 'role': result[2], 'authenticated': True}
@@ -81,87 +79,86 @@ class VulnerableDatabase:
             print(f"Database error: {e}")
             return {'error': str(e)}
     
-    def vulnerable_get_user_data(self, user_id):
+    def safe_get_user_data(self, user_id):
         """
-        🚨 VULNERABILITY: SQL Injection in Data Retrieval
-        
-        ISSUE: No input validation or parameterization
-        ATTACK: Input like "1 UNION SELECT username, password, email FROM users"
+        ✅ FIXED: SQL Injection in Data Retrieval using parameterized queries
+        Also validates user_id to be an integer
         """
         cursor = self.conn.cursor()
+
+        try:
+            user_id = int(user_id)  # Convert user_id to integer and validate
+        except ValueError:
+            print("Invalid user ID. Must be an integer.")
+            return []
         
-        # VULNERABLE CODE: Direct string formatting
-        query = f"SELECT username, email, balance FROM users WHERE id = {user_id}"
+        # FIXED CODE: Using parameterized query to prevent SQL injection
+        query = "SELECT username, email, balance FROM users WHERE id = ?"
         
-        print(f"[VULNERABLE QUERY]: {query}")
+        print(f"[SAFE QUERY]: {query} with parameter: {(user_id,)}")
         
         try:
-            cursor.execute(query)
+            cursor.execute(query, (user_id,))
             return cursor.fetchall()
         except Exception as e:
             print(f"Database error: {e}")
             return []
     
-    def vulnerable_search(self, search_term):
+    def safe_search(self, search_term):
         """
-        🚨 VULNERABILITY: SQL Injection in Search Function
-        
-        ISSUE: User input directly embedded in LIKE clause
-        ATTACK: Input like "' UNION SELECT username, password FROM users --"
+        ✅ FIXED: SQL Injection in Search Function using parameterized queries
+        Also using the LIKE operator safely.
         """
         cursor = self.conn.cursor()
         
-        # VULNERABLE CODE: No escaping of search term
-        query = f"SELECT username, email FROM users WHERE username LIKE '%{search_term}%'"
+        # FIXED CODE: Using parameterized query with safe LIKE
+        query = "SELECT username, email FROM users WHERE username LIKE ?"
+        safe_search_term = f"%{search_term}%"  # Properly escape the search term if needed
         
-        print(f"[VULNERABLE QUERY]: {query}")
+        print(f"[SAFE QUERY]: {query} with parameter: {(safe_search_term,)}")
         
         try:
-            cursor.execute(query)
+            cursor.execute(query, (safe_search_term,))
             return cursor.fetchall()
         except Exception as e:
             print(f"Database error: {e}")
             return []
     
-    def vulnerable_update_balance(self, user_id, amount):
+    def safe_update_balance(self, user_id, amount):
         """
-        🚨 VULNERABILITY: SQL Injection in UPDATE Statement
-        
-        ISSUE: Numeric input not validated, allows SQL injection
-        ATTACK: Input like "100; UPDATE users SET balance = 999999 WHERE role = 'admin' --"
+        ✅ FIXED: SQL Injection in UPDATE Statement
+        Ensures user_id is an integer, and amount is a float.
         """
         cursor = self.conn.cursor()
+
+        try:
+            user_id = int(user_id)
+            amount = float(amount)
+        except ValueError:
+            print("Invalid user ID or amount. Must be an integer and a number respectively.")
+            return False
         
-        # VULNERABLE CODE: Direct concatenation in UPDATE
-        query = f"UPDATE users SET balance = balance + {amount} WHERE id = {user_id}"
+        # FIXED CODE: Using parameterized query
+        query = "UPDATE users SET balance = balance + ? WHERE id = ?"
         
-        print(f"[VULNERABLE QUERY]: {query}")
+        print(f"[SAFE QUERY]: {query} with parameters: {(amount, user_id)}")
         
         try:
-            cursor.execute(query)
+            cursor.execute(query, (amount, user_id))
             self.conn.commit()
             return True
         except Exception as e:
             print(f"Database error: {e}")
             return False
     
-    def vulnerable_admin_query(self, custom_sql):
+    def safe_admin_query(self, custom_sql):
         """
         🚨 CRITICAL VULNERABILITY: Direct SQL Execution
-        
-        ISSUE: Allows execution of arbitrary SQL commands
-        ATTACK: Any malicious SQL like "DROP TABLE users;" or "INSERT INTO users..."
+        This function is removed because it is inherently unsafe.
+        Direct SQL execution should be avoided if possible.
         """
-        cursor = self.conn.cursor()
-        
-        print(f"[EXTREMELY DANGEROUS]: Executing raw SQL: {custom_sql}")
-        
-        try:
-            cursor.execute(custom_sql)
-            return cursor.fetchall()
-        except Exception as e:
-            print(f"Database error: {e}")
-            return []
+        print("[WARNING]: Direct SQL execution is extremely dangerous and should be avoided.")
+        return []
 
 # Example usage demonstrating the vulnerabilities
 if __name__ == "__main__":
@@ -171,35 +168,36 @@ if __name__ == "__main__":
     
     # 1. Normal login
     print("1. Normal Login:")
-    result = db.vulnerable_login("admin", "admin123")
+    result = db.safe_login("admin", "admin123")
     print(f"Result: {result}\n")
     
     # 2. SQL Injection - Authentication Bypass
-    print("2. SQL Injection Attack - Authentication Bypass:")
+    print("2. SQL Injection Attack - Authentication Bypass (Now Safe):")
     malicious_username = "admin' OR '1'='1' --"
-    result = db.vulnerable_login(malicious_username, "wrongpassword")
+    result = db.safe_login(malicious_username, "wrongpassword")
     print(f"Attack Result: {result}\n")
     
     # 3. SQL Injection - Data Extraction
-    print("3. SQL Injection Attack - Data Extraction:")
+    print("3. SQL Injection Attack - Data Extraction (Now Safe):")
     malicious_id = "1 UNION SELECT username, password, email FROM users"
-    result = db.vulnerable_get_user_data(malicious_id)
+    result = db.safe_get_user_data(malicious_id)
     print(f"Extracted Data: {result}\n")
     
     # 4. SQL Injection - Search Attack
-    print("4. SQL Injection Attack - Search:")
+    print("4. SQL Injection Attack - Search (Now Safe):")
     malicious_search = "' UNION SELECT username, password FROM users --"
-    result = db.vulnerable_search(malicious_search)
+    result = db.safe_search(malicious_search)
     print(f"Search Attack Result: {result}\n")
     
     # 5. SQL Injection - Balance Manipulation
-    print("5. SQL Injection Attack - Balance Update:")
+    print("5. SQL Injection Attack - Balance Update (Now Safe):")
     malicious_amount = "0; UPDATE users SET balance = 999999 WHERE username = 'guest' --"
-    db.vulnerable_update_balance(2, malicious_amount)
+    db.safe_update_balance(2, malicious_amount)
     
     print("\n=== SECURITY RECOMMENDATIONS ===")
     print("✅ Use parameterized queries: cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))")
     print("✅ Validate and sanitize all user inputs")
     print("✅ Use ORM frameworks with built-in SQL injection protection")
     print("✅ Implement proper error handling that doesn't expose database structure")
-    print("✅ Apply principle of least privilege for database connections") 
+    print("✅ Apply principle of least privilege for database connections")
+```
